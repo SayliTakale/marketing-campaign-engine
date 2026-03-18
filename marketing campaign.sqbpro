@@ -1,0 +1,380 @@
+<?xml version="1.0" encoding="UTF-8"?><sqlb_project><db path="marketing_campaigns.db" readonly="0" foreign_keys="0" case_sensitive_like="0" temp_store="0" wal_autocheckpoint="1000" synchronous="2"/><attached/><window><main_tabs open="structure browser pragmas query" current="3"/></window><tab_structure><column_width id="0" width="300"/><column_width id="1" width="0"/><column_width id="2" width="100"/><column_width id="3" width="2398"/><column_width id="4" width="0"/><expanded_item id="0" parent="1"/><expanded_item id="1" parent="1"/><expanded_item id="2" parent="1"/><expanded_item id="3" parent="1"/></tab_structure><tab_browse><table title="customers" custom_title="0" dock_id="1" table="4,9:maincustomers"/><dock_state state="000000ff00000000fd00000001000000020000043b000002aefc0100000001fb000000160064006f0063006b00420072006f007700730065003101000000000000043b0000013900ffffff000002580000000000000004000000040000000800000008fc00000000"/><default_encoding codec=""/><browse_table_settings><table schema="main" name="customers" show_row_id="0" encoding="" plot_x_axis="" unlock_view_pk="_rowid_" freeze_columns="0"><sort/><column_widths><column index="1" value="109"/><column index="2" value="40"/><column index="3" value="54"/><column index="4" value="78"/><column index="5" value="93"/><column index="6" value="124"/><column index="7" value="132"/><column index="8" value="109"/></column_widths><filter_values/><conditional_formats/><row_id_formats/><display_formats/><hidden_columns/><plot_y_axes/><global_filter/></table></browse_table_settings></tab_browse><tab_sql><sql name="SQL 1">SELECT 'Customers' AS table_name, COUNT(*) AS row_count FROM customers
+UNION ALL
+SELECT 'Campaigns', COUNT(*) FROM campaigns
+UNION ALL
+SELECT 'Exposures', COUNT(*) FROM exposures
+UNION ALL
+SELECT 'Outcomes', COUNT(*) FROM outcomes;
+</sql><sql name="SQL 4">PRAGMA foreign_keys = ON;
+</sql><sql name="SQL 9*">SELECT 
+    c.campaign_id,
+    c.campaign_name,
+    c.channel,
+    COUNT(DISTINCT e.customer_id) AS total_reached,
+    SUM(o.converted) AS total_conversions,
+    ROUND(AVG(o.converted) * 100, 2) AS conversion_rate_pct,
+    ROUND(SUM(o.revenue_generated), 2) AS total_revenue,
+    ROUND(SUM(e.cost_per_contact), 2) AS total_cost,
+    ROUND(
+        (SUM(o.revenue_generated) - SUM(e.cost_per_contact)) / 
+        NULLIF(SUM(e.cost_per_contact), 0) * 100, 
+        2
+    ) AS roi_pct
+FROM campaigns c
+INNER JOIN exposures e ON c.campaign_id = e.campaign_id
+INNER JOIN outcomes o ON e.customer_id = o.customer_id 
+    AND e.campaign_id = o.campaign_id
+GROUP BY c.campaign_id, c.campaign_name, c.channel
+ORDER BY roi_pct DESC;</sql><sql name="SQL 10*">SELECT 
+    e.campaign_id,
+    c.channel,
+    
+    -- Treatment Group
+    COUNT(CASE WHEN e.treatment_group = 1 THEN 1 END) AS treatment_size,
+    SUM(CASE WHEN e.treatment_group = 1 THEN o.converted ELSE 0 END) AS treatment_conversions,
+    ROUND(
+        SUM(CASE WHEN e.treatment_group = 1 THEN o.converted ELSE 0 END) * 100.0 /
+        NULLIF(COUNT(CASE WHEN e.treatment_group = 1 THEN 1 END), 0),
+        2
+    ) AS treatment_conv_rate_pct,
+    
+    -- Control Group
+    COUNT(CASE WHEN e.treatment_group = 0 THEN 1 END) AS control_size,
+    SUM(CASE WHEN e.treatment_group = 0 THEN o.converted ELSE 0 END) AS control_conversions,
+    ROUND(
+        SUM(CASE WHEN e.treatment_group = 0 THEN o.converted ELSE 0 END) * 100.0 /
+        NULLIF(COUNT(CASE WHEN e.treatment_group = 0 THEN 1 END), 0),
+        2
+    ) AS control_conv_rate_pct,
+    
+    -- Lift
+    ROUND(
+        (SUM(CASE WHEN e.treatment_group = 1 THEN o.converted ELSE 0 END) * 1.0 /
+         NULLIF(COUNT(CASE WHEN e.treatment_group = 1 THEN 1 END), 0)) -
+        (SUM(CASE WHEN e.treatment_group = 0 THEN o.converted ELSE 0 END) * 1.0 /
+         NULLIF(COUNT(CASE WHEN e.treatment_group = 0 THEN 1 END), 0)),
+        4
+    ) AS absolute_lift
+
+FROM exposures e
+INNER JOIN campaigns c ON e.campaign_id = c.campaign_id
+INNER JOIN outcomes o ON e.customer_id = o.customer_id 
+    AND e.campaign_id = o.campaign_id
+GROUP BY e.campaign_id, c.channel
+ORDER BY absolute_lift DESC;</sql><sql name="SQL 11*">SELECT 
+    channel,
+    COUNT(DISTINCT campaign_id) AS num_campaigns,
+    COUNT(DISTINCT customer_id) AS customers_reached,
+    SUM(converted) AS total_conversions,
+    ROUND(AVG(converted) * 100, 2) AS avg_conversion_rate,
+    ROUND(SUM(revenue_generated), 2) AS total_revenue,
+    ROUND(SUM(cost_per_contact), 2) AS total_cost,
+    ROUND(
+        (SUM(revenue_generated) - SUM(cost_per_contact)) /
+        NULLIF(SUM(cost_per_contact), 0) * 100,
+        2
+    ) AS channel_roi_pct
+FROM (
+    SELECT 
+        e.campaign_id,
+        e.customer_id,
+        e.channel,
+        e.cost_per_contact,
+        o.converted,
+        o.revenue_generated
+    FROM exposures e
+    INNER JOIN outcomes o ON e.customer_id = o.customer_id 
+        AND e.campaign_id = o.campaign_id
+    WHERE e.treatment_group = 1
+) AS channel_data
+GROUP BY channel
+ORDER BY channel_roi_pct DESC;</sql><sql name="SQL 12*">-- Find the last campaign each customer was exposed to before converting
+WITH customer_conversions AS (
+    SELECT DISTINCT 
+        customer_id,
+        conversion_date,
+        revenue_generated
+    FROM outcomes
+    WHERE converted = 1
+),
+last_touch AS (
+    SELECT 
+        e.customer_id,
+        e.campaign_id,
+        e.channel,
+        e.exposure_date,
+        c.conversion_date,
+        c.revenue_generated,
+        ROW_NUMBER() OVER (
+            PARTITION BY e.customer_id 
+            ORDER BY e.exposure_date DESC
+        ) AS recency_rank
+    FROM exposures e
+    INNER JOIN customer_conversions c 
+        ON e.customer_id = c.customer_id
+    WHERE e.exposure_date &lt;= c.conversion_date
+)
+SELECT 
+    campaign_id,
+    channel,
+    COUNT(*) AS conversions_attributed,
+    ROUND(SUM(revenue_generated), 2) AS revenue_attributed
+FROM last_touch
+WHERE recency_rank = 1
+GROUP BY campaign_id, channel
+ORDER BY revenue_attributed DESC;</sql><sql name="SQL 13*">-- Give equal credit to all campaigns in the customer journey
+WITH customer_conversions AS (
+    SELECT DISTINCT 
+        customer_id,
+        conversion_date,
+        revenue_generated
+    FROM outcomes
+    WHERE converted = 1
+),
+all_touches AS (
+    SELECT 
+        e.customer_id,
+        e.campaign_id,
+        e.channel,
+        e.exposure_date,
+        c.conversion_date,
+        c.revenue_generated,
+        COUNT(*) OVER (PARTITION BY e.customer_id) AS total_touches
+    FROM exposures e
+    INNER JOIN customer_conversions c 
+        ON e.customer_id = c.customer_id
+    WHERE e.exposure_date &lt;= c.conversion_date
+)
+SELECT 
+    campaign_id,
+    channel,
+    COUNT(DISTINCT customer_id) AS customers_influenced,
+    ROUND(SUM(1.0 / total_touches), 2) AS conversions_attributed,
+    ROUND(SUM(revenue_generated / total_touches), 2) AS revenue_attributed
+FROM all_touches
+GROUP BY campaign_id, channel
+ORDER BY revenue_attributed DESC;</sql><sql name="SQL 14*">-- More recent touchpoints get more credit
+WITH customer_conversions AS (
+    SELECT DISTINCT 
+        customer_id,
+        conversion_date,
+        revenue_generated
+    FROM outcomes
+    WHERE converted = 1
+),
+touches_with_decay AS (
+    SELECT 
+        e.customer_id,
+        e.campaign_id,
+        e.channel,
+        e.exposure_date,
+        c.conversion_date,
+        c.revenue_generated,
+        -- Days between exposure and conversion
+        CAST(julianday(c.conversion_date) - julianday(e.exposure_date) AS INTEGER) AS days_to_conversion,
+        -- Decay weight: half-life of 7 days
+        POWER(0.5, 
+            (julianday(c.conversion_date) - julianday(e.exposure_date)) / 7.0
+        ) AS decay_weight
+    FROM exposures e
+    INNER JOIN customer_conversions c 
+        ON e.customer_id = c.customer_id
+    WHERE e.exposure_date &lt;= c.conversion_date
+),
+normalized_weights AS (
+    SELECT 
+        *,
+        SUM(decay_weight) OVER (PARTITION BY customer_id) AS total_weight
+    FROM touches_with_decay
+)
+SELECT 
+    campaign_id,
+    channel,
+    COUNT(DISTINCT customer_id) AS customers_influenced,
+    ROUND(SUM(decay_weight / total_weight), 2) AS conversions_attributed,
+    ROUND(SUM((decay_weight / total_weight) * revenue_generated), 2) AS revenue_attributed,
+    ROUND(AVG(days_to_conversion), 1) AS avg_days_to_conversion
+FROM normalized_weights
+GROUP BY campaign_id, channel
+ORDER BY revenue_attributed DESC;</sql><sql name="SQL 15*">SELECT 
+    CASE 
+        WHEN c.historical_spend &gt; 2000 THEN 'High Spender'
+        WHEN c.historical_spend &gt; 1000 THEN 'Medium Spender'
+        ELSE 'Low Spender'
+    END AS customer_segment,
+    
+    COUNT(DISTINCT c.customer_id) AS customers,
+    COUNT(DISTINCT e.campaign_id) AS campaigns_exposed_to,
+    SUM(o.converted) AS total_conversions,
+    ROUND(AVG(o.converted) * 100, 2) AS conversion_rate_pct,
+    ROUND(SUM(o.revenue_generated), 2) AS total_revenue,
+    ROUND(AVG(o.revenue_generated), 2) AS avg_revenue_per_customer
+    
+FROM customers c
+LEFT JOIN exposures e ON c.customer_id = e.customer_id
+LEFT JOIN outcomes o ON e.customer_id = o.customer_id 
+    AND e.campaign_id = o.campaign_id
+GROUP BY customer_segment
+ORDER BY total_revenue DESC;</sql><sql name="SQL 16*">-- How many touchpoints do customers have before converting?
+WITH customer_touches AS (
+    SELECT 
+        e.customer_id,
+        COUNT(DISTINCT e.campaign_id) AS num_campaigns,
+        COUNT(DISTINCT e.channel) AS num_channels,
+        MAX(o.converted) AS converted
+    FROM exposures e
+    LEFT JOIN outcomes o ON e.customer_id = o.customer_id
+    GROUP BY e.customer_id
+)
+SELECT 
+    num_campaigns AS touchpoints,
+    COUNT(*) AS num_customers,
+    SUM(CASE WHEN converted = 1 THEN 1 ELSE 0 END) AS converters,
+    ROUND(
+        SUM(CASE WHEN converted = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*),
+        2
+    ) AS conversion_rate_pct
+FROM customer_touches
+GROUP BY num_campaigns
+ORDER BY num_campaigns;</sql><sql name="SQL 17*">-- Which channel sequences work best?
+WITH customer_channels AS (
+    SELECT 
+        e.customer_id,
+        GROUP_CONCAT(DISTINCT e.channel) AS channel_mix,
+        MAX(o.converted) AS converted,
+        MAX(o.revenue_generated) AS revenue
+    FROM exposures e
+    LEFT JOIN outcomes o ON e.customer_id = o.customer_id
+    GROUP BY e.customer_id
+    HAVING COUNT(DISTINCT e.channel) &gt; 1
+)
+SELECT 
+    channel_mix,
+    COUNT(*) AS customers,
+    SUM(converted) AS conversions,
+    ROUND(AVG(converted) * 100, 2) AS conversion_rate_pct,
+    ROUND(SUM(revenue), 2) AS total_revenue
+FROM customer_channels
+GROUP BY channel_mix
+HAVING COUNT(*) &gt; 100
+ORDER BY conversion_rate_pct DESC
+LIMIT 10;</sql><sql name="SQL 18*">-- TRUE incremental revenue: Treatment - Control baseline
+WITH campaign_metrics AS (
+    SELECT 
+        e.campaign_id,
+        c.channel,
+        
+        -- Treatment metrics
+        COUNT(CASE WHEN e.treatment_group = 1 THEN 1 END) AS treatment_n,
+        SUM(CASE WHEN e.treatment_group = 1 THEN o.revenue_generated ELSE 0 END) AS treatment_revenue,
+        
+        -- Control metrics
+        COUNT(CASE WHEN e.treatment_group = 0 THEN 1 END) AS control_n,
+        SUM(CASE WHEN e.treatment_group = 0 THEN o.revenue_generated ELSE 0 END) AS control_revenue,
+        
+        -- Cost
+        SUM(CASE WHEN e.treatment_group = 1 THEN e.cost_per_contact ELSE 0 END) AS total_cost
+        
+    FROM exposures e
+    INNER JOIN campaigns c ON e.campaign_id = c.campaign_id
+    INNER JOIN outcomes o ON e.customer_id = o.customer_id 
+        AND e.campaign_id = o.campaign_id
+    GROUP BY e.campaign_id, c.channel
+)
+SELECT 
+    campaign_id,
+    channel,
+    treatment_n,
+    control_n,
+    
+    -- Revenue per user
+    ROUND(treatment_revenue / treatment_n, 2) AS treatment_revenue_per_user,
+    ROUND(control_revenue / control_n, 2) AS control_revenue_per_user,
+    
+    -- Incremental revenue
+    ROUND(
+        (treatment_revenue / treatment_n - control_revenue / control_n) * treatment_n,
+        2
+    ) AS incremental_revenue,
+    
+    -- ROI
+    ROUND(
+        ((treatment_revenue / treatment_n - control_revenue / control_n) * treatment_n - total_cost) /
+        NULLIF(total_cost, 0) * 100,
+        2
+    ) AS roi_pct
+    
+FROM campaign_metrics
+ORDER BY incremental_revenue DESC;</sql><sql name="SQL 19*">-- Find campaigns with negative ROI
+SELECT 
+    c.campaign_id,
+    c.campaign_name,
+    c.channel,
+    ROUND(SUM(o.revenue_generated), 2) AS total_revenue,
+    ROUND(SUM(e.cost_per_contact), 2) AS total_cost,
+    ROUND(
+        (SUM(o.revenue_generated) - SUM(e.cost_per_contact)) /
+        NULLIF(SUM(e.cost_per_contact), 0) * 100,
+        2
+    ) AS roi_pct,
+    ROUND(SUM(o.revenue_generated) - SUM(e.cost_per_contact), 2) AS profit_loss,
+    'KILL - Negative ROI' AS recommendation
+FROM campaigns c
+INNER JOIN exposures e ON c.campaign_id = e.campaign_id
+INNER JOIN outcomes o ON e.customer_id = o.customer_id 
+    AND e.campaign_id = o.campaign_id
+WHERE e.treatment_group = 1
+GROUP BY c.campaign_id, c.campaign_name, c.channel
+HAVING roi_pct &lt; 0
+ORDER BY profit_loss;</sql><sql name="SQL 20*">-- Calculate recommended budget allocation based on ROI
+WITH channel_performance AS (
+    SELECT 
+        channel,
+        ROUND(SUM(cost_per_contact), 2) AS current_spend,
+        ROUND(
+            (SUM(revenue_generated) - SUM(cost_per_contact)) /
+            NULLIF(SUM(cost_per_contact), 0),
+            4
+        ) AS roi
+    FROM (
+        SELECT 
+            e.channel,
+            e.cost_per_contact,
+            o.revenue_generated
+        FROM exposures e
+        INNER JOIN outcomes o ON e.customer_id = o.customer_id 
+            AND e.campaign_id = o.campaign_id
+        WHERE e.treatment_group = 1
+    ) AS channel_data
+    GROUP BY channel
+),
+total_budget AS (
+    SELECT SUM(current_spend) AS total FROM channel_performance
+)
+SELECT 
+    cp.channel,
+    cp.current_spend,
+    ROUND(cp.current_spend / tb.total * 100, 1) AS current_pct,
+    cp.roi,
+    ROUND(cp.roi * 100, 1) AS roi_pct,
+    
+    -- Recommended allocation based on ROI
+    ROUND(
+        CASE 
+            WHEN cp.roi &gt; 0 THEN cp.roi / (SELECT SUM(CASE WHEN roi &gt; 0 THEN roi ELSE 0 END) FROM channel_performance) * 100
+            ELSE 0
+        END,
+        1
+    ) AS recommended_pct,
+    
+    ROUND(
+        CASE 
+            WHEN cp.roi &gt; 0 THEN cp.roi / (SELECT SUM(CASE WHEN roi &gt; 0 THEN roi ELSE 0 END) FROM channel_performance) * 100
+            ELSE 0
+        END - (cp.current_spend / tb.total * 100),
+        1
+    ) AS shift_pct
+    
+FROM channel_performance cp
+CROSS JOIN total_budget tb
+ORDER BY roi DESC;</sql><current_tab id="13"/></tab_sql></sqlb_project>

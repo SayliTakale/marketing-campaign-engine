@@ -1,0 +1,13 @@
+campaign_id,campaign_name,channel,start_date,campaign_type,end_date
+CAMP_001,Campaign 1,Paid Social,2024-12-18,Winback,2025-01-17
+CAMP_002,Campaign 2,SMS,2024-04-27,Acquisition,2024-05-27
+CAMP_003,Campaign 3,Search,2024-11-16,Winback,2024-12-16
+CAMP_004,Campaign 4,Email,2024-11-17,Retention,2024-12-17
+CAMP_005,Campaign 5,Push,2024-08-16,Acquisition,2024-09-15
+CAMP_006,Campaign 6,Email,2024-01-24,Cross-sell,2024-02-23
+CAMP_007,Campaign 7,SMS,2024-01-12,Cross-sell,2024-02-11
+CAMP_008,Campaign 8,SMS,2024-02-17,Acquisition,2024-03-18
+CAMP_009,Campaign 9,Email,2024-12-26,Retention,2025-01-25
+CAMP_010,Campaign 10,Paid Social,2024-12-02,Cross-sell,2025-01-01
+CAMP_011,Campaign 11,Paid Social,2024-12-11,Winback,2025-01-10
+CAMP_012,Campaign 12,Paid Social,2024-02-17,Retention,2024-03-18

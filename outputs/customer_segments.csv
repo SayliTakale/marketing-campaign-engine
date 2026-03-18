@@ -1,0 +1,5 @@
+segment,customer_count,uplift_score,treatment_prob,control_prob
+Persuadables,10338,0.0234,0.0867,0.0633
+Sure Things,112255,-0.0001,0.0823,0.0824
+Lost Causes,112257,-0.0198,0.0612,0.081
+Sleeping Dogs,10339,-0.0421,0.0589,0.101

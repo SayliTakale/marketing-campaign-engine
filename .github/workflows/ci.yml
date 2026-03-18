@@ -1,0 +1,73 @@
+# ==============================================================================
+# CI Pipeline — Marketing Campaign Optimization Engine
+# ==============================================================================
+# Triggers : every push to main/master, every pull request into main/master
+# What runs : installs dependencies → runs all 103 unit tests
+# Fails fast : if any test fails, the commit is blocked (shown as red X on GitHub)
+# ==============================================================================
+
+name: Run Tests
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+
+jobs:
+  test:
+    name: Test suite — Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false          # run all matrix versions even if one fails
+      matrix:
+        python-version: ["3.9", "3.10", "3.11"]   # test on 3 versions
+
+    steps:
+      # ── 1. Check out the repository ───────────────────────────────────────
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── 2. Set up the requested Python version ────────────────────────────
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # ── 3. Cache pip downloads (speeds up re-runs) ────────────────────────
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-${{ matrix.python-version }}-
+            ${{ runner.os }}-pip-
+
+      # ── 4. Install all project dependencies ──────────────────────────────
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # ── 5. Run the full test suite ────────────────────────────────────────
+      - name: Run tests
+        run: |
+          python -m pytest src/test_ab_testing.py src/test_models_utils.py \
+            --verbose \
+            --tb=short \
+            --junit-xml=test-results/results-${{ matrix.python-version }}.xml
+
+      # ── 6. Upload test results (visible in GitHub Actions UI) ─────────────
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()            # upload even when tests fail — helps debugging
+        with:
+          name: test-results-py${{ matrix.python-version }}
+          path: test-results/
+          retention-days: 30

@@ -1,0 +1,45 @@
+project:
+  name: "Marketing Campaign Optimization Engine"
+  version: "1.0.0"
+  author: "Marketing Analytics Team"
+
+data:
+  n_customers: 100000
+  n_campaigns: 12
+  date_range:
+    start: "2024-01-01"
+    end: "2025-01-31"
+  treatment_ratio: 0.7
+  
+channels:
+  - Email
+  - Push
+  - SMS
+  - Paid Social
+  - Search
+
+campaigns:
+  baseline_conversion_rate: 0.04
+  conversion_variance: 0.02
+  
+costs:
+  Email: 0.10
+  Push: 0.05
+  SMS: 0.15
+  Paid Social: 2.50
+  Search: 3.00
+
+revenue:
+  min: 50
+  max: 500
+  mean: 150
+
+modeling:
+  test_size: 0.2
+  random_state: 42
+  cv_folds: 5
+
+ab_testing:
+  alpha: 0.05
+  confidence_level: 0.95
+  min_sample_size: 1000
